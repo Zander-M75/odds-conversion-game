@@ -486,7 +486,7 @@
   var LABELS = { american: 'American Odds', decimal: 'Decimal Odds', probability: 'Implied Probability' };
   var SUFFIX = { american: '', decimal: '', probability: '%' };
   var PLACEHOLDER = { american: 'e.g. +150', decimal: 'e.g. 2.50', probability: 'e.g. 40.0' };
-  var TOLERANCE = { american: 1, decimal: 0.02, probability: 0.3 };
+  var TOLERANCE = { american: 2, decimal: 0.02, probability: 0.3 };
   var STORAGE_KEY = 'oddsDrillStats.v1';
 
   var els = {
@@ -511,10 +511,38 @@
   };
 
   var stats = loadStats();
-  var question = null;
   var givenFormat = null;
+  var givenValue = null;
+  var targets = null;
   var answerFormats = null;
   var submitted = false;
+
+  function americanToDecimal(american) {
+    return american > 0 ? (american / 100 + 1) : (100 / Math.abs(american) + 1);
+  }
+
+  function decimalToAmerican(decimal) {
+    return decimal >= 2 ? (decimal - 1) * 100 : -100 / (decimal - 1);
+  }
+
+  function decimalToProbability(decimal) { return 1 / decimal; }
+  function probabilityToDecimal(probability) { return 1 / probability; }
+
+  function toDecimal(format, value) {
+    if (format === 'decimal') return value;
+    if (format === 'american') return americanToDecimal(value);
+    return probabilityToDecimal(value);
+  }
+
+  function fromDecimal(format, decimalValue) {
+    if (format === 'decimal') return decimalValue;
+    if (format === 'american') return decimalToAmerican(decimalValue);
+    return decimalToProbability(decimalValue);
+  }
+
+  function convert(fromFormat, toFormat, value) {
+    return fromDecimal(toFormat, toDecimal(fromFormat, value));
+  }
 
   function loadStats() {
     try {
@@ -537,20 +565,20 @@
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
-  function displayString(format) {
+  function displayString(format, value) {
     if (format === 'american') {
-      return { main: (question.american > 0 ? '+' : '') + question.american, suffix: '' };
+      return { main: (value > 0 ? '+' : '') + value, suffix: '' };
     }
     if (format === 'decimal') {
-      return { main: question.decimal.toFixed(2), suffix: '×' };
+      return { main: value.toFixed(2), suffix: '×' };
     }
-    return { main: (question.probability * 100).toFixed(1), suffix: '%' };
+    return { main: (value * 100).toFixed(1), suffix: '%' };
   }
 
   function correctValue(format) {
-    if (format === 'american') return question.american;
-    if (format === 'decimal') return parseFloat(question.decimal.toFixed(2));
-    return parseFloat((question.probability * 100).toFixed(1));
+    if (format === 'american') return Math.round(targets[format]);
+    if (format === 'decimal') return parseFloat(targets[format].toFixed(2));
+    return parseFloat((targets[format] * 100).toFixed(1));
   }
 
   function correctDisplay(format) {
@@ -565,17 +593,31 @@
   function newQuestion() {
     var isPositive = Math.random() < 0.5;
     var magnitude = Math.round(randomInt(100, 700) / 5) * 5;
-    var american = isPositive ? magnitude : -magnitude;
-    var decimal = isPositive ? (american / 100 + 1) : (100 / Math.abs(american) + 1);
-    var probability = 1 / decimal;
-
-    question = { american: american, decimal: decimal, probability: probability };
+    var seedAmerican = isPositive ? magnitude : -magnitude;
 
     var formats = ['american', 'decimal', 'probability'];
     givenFormat = formats[randomInt(0, 2)];
     answerFormats = formats.filter(function (f) { return f !== givenFormat; });
 
-    var given = displayString(givenFormat);
+    // The given value is rounded to whatever precision is actually shown on
+    // screen, and every answer is derived FROM that rounded value below —
+    // never from the unrounded seed — so a correct manual conversion of what
+    // the player sees always lands on the accepted answer.
+    if (givenFormat === 'american') {
+      givenValue = seedAmerican;
+    } else if (givenFormat === 'decimal') {
+      givenValue = parseFloat(americanToDecimal(seedAmerican).toFixed(2));
+    } else {
+      var seedProbabilityPct = decimalToProbability(americanToDecimal(seedAmerican)) * 100;
+      givenValue = parseFloat(seedProbabilityPct.toFixed(1)) / 100;
+    }
+
+    targets = {};
+    answerFormats.forEach(function (f) {
+      targets[f] = convert(givenFormat, f, givenValue);
+    });
+
+    var given = displayString(givenFormat, givenValue);
     els.givenLabel.textContent = LABELS[givenFormat];
     els.givenValue.innerHTML = given.main + (given.suffix ? '<span class="given-suffix">' + given.suffix + '</span>' : '');
 
