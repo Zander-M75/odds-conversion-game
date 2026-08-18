@@ -2,6 +2,8 @@
 
 A single-file browser game for practicing conversions between the three ways gambling odds get quoted: **American odds**, **decimal odds**, and **implied probability**.
 
+![Odds Drill screenshot](screenshot.png)
+
 ## How to play
 
 1. Open [`index.html`](index.html) in a browser — no build step or server required.
